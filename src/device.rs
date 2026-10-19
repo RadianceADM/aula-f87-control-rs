@@ -171,6 +171,10 @@ pub struct DeviceLock {
 
 impl DeviceLock {
     pub fn path() -> PathBuf {
+        #[cfg(feature = "fake-keyboard")]
+        if std::env::var_os("AULA_F87_FAKE").is_some() {
+            return config_dir().join("fake.lock"); // never wait for the real keyboard's users
+        }
         let base = match std::env::var("XDG_RUNTIME_DIR") {
             Ok(d) if !d.is_empty() => PathBuf::from(d),
             _ => match std::env::var("XDG_CACHE_HOME") {
@@ -718,12 +722,43 @@ pub struct Lighting {
     pub side: u8,
     /// Minutes of inactivity before the backlight sleeps; 0 = never.
     pub sleep: f64,
+    /// Shown in the preview only; set on the keyboard (see docs/PROTOCOL.md):
+    /// side-light colour index, and the light bar above the arrow keys
+    /// (mode like the side lights, colour index, brightness 0-4).
+    pub side_color: u8,
+    pub bar: u8,
+    pub bar_color: u8,
+    pub bar_brightness: u8,
 }
 
 impl Default for Lighting {
     fn default() -> Self {
-        Lighting { effect: 1, brightness: 4, speed: 3, colorful: false, color: [255, 255, 255], side: 1, sleep: 5.0 }
+        Lighting {
+            effect: 1,
+            brightness: 4,
+            speed: 3,
+            colorful: false,
+            color: [255, 255, 255],
+            side: 1,
+            sleep: 5.0,
+            side_color: 0,
+            bar: 0,
+            bar_color: 0,
+            bar_brightness: 4,
+        }
     }
+}
+
+pub const CFG_SIDE_COLOR: usize = 19;
+pub const CFG_BAR: usize = 28;
+pub const CFG_BAR_COLOR: usize = 29;
+pub const CFG_BAR_BRIGHTNESS: usize = 30;
+
+/// The keyboard's own colours, as used by colour indexes: red, green, blue,
+/// yellow, magenta, cyan, white.
+pub fn standard_color(index: u8) -> [u8; 3] {
+    let o = 3 * (index as usize % 7);
+    [STD_COLORS[o], STD_COLORS[o + 1], STD_COLORS[o + 2]]
 }
 
 pub struct Keyboard {
@@ -913,6 +948,10 @@ impl Keyboard {
             effect: cfg[CFG_EFFECT],
             side: cfg[CFG_SIDE],
             sleep: cfg[CFG_SLEEP] as f64 / 2.0,
+            side_color: cfg[CFG_SIDE_COLOR],
+            bar: cfg[CFG_BAR],
+            bar_color: cfg[CFG_BAR_COLOR],
+            bar_brightness: cfg[CFG_BAR_BRIGHTNESS].min(4),
             ..Lighting::default()
         };
         if (1..=18).contains(&state.effect) {
@@ -1041,8 +1080,14 @@ pub fn connect() -> Result<Keyboard> {
         for path in hidraw::candidates(usb_id, report_id) {
             let result = Hidraw::open(&path).and_then(|dev| {
                 let mut link = open(dev);
-                let model = link.probe()?;
-                Ok(Keyboard::new(link, model, Cache::load()))
+                let mut model = link.probe()?;
+                let mut cache = Cache::load();
+                if link.can_read_blocks() {
+                    cache.put_value("model", Value::String(model.clone()));
+                } else if let Some(known) = cache.get_value("model").and_then(|v| v.as_str()) {
+                    model = known.to_string(); // the 2.4G receiver doesn't report the model
+                }
+                Ok(Keyboard::new(link, model, cache))
             });
             match result {
                 Ok(kb) => return Ok(kb),

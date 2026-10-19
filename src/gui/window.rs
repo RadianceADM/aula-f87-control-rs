@@ -24,7 +24,7 @@ use crate::effects::{
     battery_text, effect_info, effects, nearest_sleep_index, sleep_label, Effect, MUSIC_FOLLOW, MUSIC_STYLES, PER_KEY,
     PRESETS, SIDE_MODES, SLEEP_MINUTES,
 };
-use crate::layout::{key_x, keys, PLANE, WIDTH_U};
+use crate::layout::{keys, PLANE};
 use crate::music::{MusicError, MusicParams, MusicSync, Sink};
 use crate::settings::Settings;
 
@@ -116,6 +116,7 @@ pub struct Win {
     music_seen: Cell<u64>,
     follow_updating: Cell<bool>,
     polls: Cell<u64>,
+    edits: Cell<u64>, // counts changes made in the window, see follow_keyboard
     battery: Cell<Option<Battery>>,
     tray: RefCell<Option<Tray>>,
 }
@@ -137,14 +138,14 @@ impl Win {
             };
             let w = weak.clone();
             let preview = KeyboardView::new(
-                Rc::new(move |led| w.upgrade().map(|win| win.preview_color(led)).unwrap_or([0; 3])),
+                Rc::new(move |led, t| w.upgrade().map(|win| win.preview_color(led, t)).unwrap_or([0; 3])),
                 None,
                 230,
             );
             let w = weak.clone();
             let w2 = weak.clone();
             let paint_view = KeyboardView::new(
-                Rc::new(move |led| w.upgrade().map(|win| win.keys.borrow()[led]).unwrap_or([0; 3])),
+                Rc::new(move |led, _| w.upgrade().map(|win| win.keys.borrow()[led]).unwrap_or([0; 3])),
                 Some(Rc::new(move |led, erase| {
                     if let Some(win) = w2.upgrade() {
                         win.paint_key(led, erase);
@@ -154,7 +155,7 @@ impl Win {
             );
             let w = weak.clone();
             let music_view = KeyboardView::new(
-                Rc::new(move |led| w.upgrade().map(|win| win.music_colors.borrow()[led]).unwrap_or([0; 3])),
+                Rc::new(move |led, _| w.upgrade().map(|win| win.music_colors.borrow()[led]).unwrap_or([0; 3])),
                 None,
                 230,
             );
@@ -240,6 +241,7 @@ impl Win {
                 music_seen: Cell::new(0),
                 follow_updating: Cell::new(false),
                 polls: Cell::new(0),
+                edits: Cell::new(0),
                 battery: Cell::new(None),
                 tray: RefCell::new(None),
             }
@@ -249,6 +251,11 @@ impl Win {
     }
 
     fn build(self: &Rc<Self>, settings: &Settings, icon_dir: &Path) {
+        let (w1, w2) = (Rc::downgrade(self), Rc::downgrade(self));
+        self.preview.animate(
+            Rc::new(move |t| w1.upgrade().map(|w| super::preview::strips(&w.state.borrow(), t)).unwrap_or_default()),
+            Rc::new(move || w2.upgrade().is_some_and(|w| super::preview::animated(&w.state.borrow()))),
+        );
         let stack = self.stack.clone();
         stack.add_titled_with_icon(&self.lighting_page(), Some("lighting"), "Lighting", "weather-clear-symbolic");
         stack.add_titled_with_icon(&self.per_key_page(), Some("per-key"), "Per-key colors", "applications-graphics-symbolic");
@@ -895,7 +902,7 @@ impl Win {
         let editable = connected && !music_on && !self.music_starting.get();
         let state = self.state.borrow().clone();
         let header = kb.as_ref().map(|k| k.description()).unwrap_or_else(|| "Keyboard not connected".into());
-        let mut items = vec![Item::label(header)];
+        let mut items = vec![Item::label(header).key("keyboard")];
         if self.damaged.get() {
             let w = Rc::downgrade(self);
             items.push(Item::new("Repair keyboard settings", move || {
@@ -905,7 +912,7 @@ impl Win {
             }));
         }
         if let (true, Some(b)) = (connected, self.battery.get()) {
-            items.push(Item::label(format!("Battery: {}", battery_text(Some(&b), false, None))));
+            items.push(Item::label(format!("Battery: {}", battery_text(Some(&b), false, None))).key("battery"));
         }
         let w = Rc::downgrade(self);
         let win = move || w.upgrade();
@@ -1194,6 +1201,7 @@ impl Win {
             }
             None => self.connect_keyboard(true),
             Some(kb) => {
+                self.follow_keyboard(&kb);
                 if self.polls.get() % BATTERY_EVERY_POLLS == 0
                     && self.music.borrow().is_none()
                     && !self.music_starting.get()
@@ -1213,6 +1221,39 @@ impl Win {
                 }
             }
         }
+    }
+
+    /// Pick up changes made on the keyboard itself (Fn shortcuts), so the
+    /// window and its preview show what the keyboard shows. Reads only.
+    fn follow_keyboard(self: &Rc<Self>, kb: &Arc<Keyboard>) {
+        let every = if kb.wired() { 1 } else { 2 }; // radio time is scarcer over 2.4G
+        let busy = self.music.borrow().is_some()
+            || self.music_starting.get()
+            || self.connecting.get()
+            || self.apply_source.borrow().is_some()
+            || self.apply_queued.load(Ordering::SeqCst);
+        if busy || !self.window.is_visible() || self.polls.get() % every != 0 {
+            return;
+        }
+        let edits = self.edits.get();
+        let (k, w) = (kb.clone(), Rc::downgrade(self));
+        self.worker.submit(
+            move || k.read_lighting(),
+            move |result| {
+                let Some(win) = w.upgrade() else { return };
+                // Ignore it if something was changed in the window meanwhile.
+                if win.edits.get() != edits || win.apply_queued.load(Ordering::SeqCst) {
+                    return;
+                }
+                match result {
+                    Ok(state) if state != *win.state.borrow() => win.show_state(state),
+                    Ok(_) => {}
+                    Err(Error::Damaged(m)) => win.disconnected(&m, true),
+                    Err(Error::Io(_)) => win.disconnected("Lost connection to the keyboard.", false),
+                    Err(_) => {} // e.g. asleep over 2.4G; the next poll tries again
+                }
+            },
+        );
     }
 
     /// Battery level over 2.4G; over the cable the keyboard runs on USB power.
@@ -1236,6 +1277,7 @@ impl Win {
         if self.loading.get() {
             return;
         }
+        self.edits.set(self.edits.get() + 1);
         let minutes = if keep_on { 0.0 } else { SLEEP_MINUTES[self.sleep_row.selected() as usize] };
         self.state.borrow_mut().sleep = minutes;
         self.pending.lock().unwrap().sleep = minutes;
@@ -1303,7 +1345,7 @@ impl Win {
             colorful: self.rainbow_row.is_active(),
             color: rgb(&self.color_button.rgba()),
             side: self.side_row.selected() as u8,
-            sleep: self.state.borrow().sleep,
+            ..self.state.borrow().clone() // sleep, and what only the keyboard sets
         }
     }
 
@@ -1370,6 +1412,7 @@ impl Win {
         if self.loading.get() {
             return;
         }
+        self.edits.set(self.edits.get() + 1);
         let state = self.read_widgets();
         *self.state.borrow_mut() = state.clone();
         *self.pending.lock().unwrap() = state;
@@ -1421,26 +1464,9 @@ impl Win {
         self.toast(&format!("Couldn't update the keyboard: {e}"), 5);
     }
 
-    fn preview_color(&self, led: usize) -> [u8; 3] {
-        let state = self.state.borrow();
-        if state.effect == 0 {
-            return [0, 0, 0];
-        }
-        if state.effect == PER_KEY {
-            return self.keys.borrow()[led];
-        }
-        let info = effect_info(state.effect);
-        if (1..=18).contains(&state.effect) && state.brightness == 0 {
-            return [0, 0, 0];
-        }
-        let level = 0.4 + 0.6 * state.brightness as f64 / 4.0;
-        let color: [f64; 3] = if state.colorful || !info.color {
-            let hue = key_x(led) / WIDTH_U;
-            hsv(hue)
-        } else {
-            state.color.map(|c| c as f64)
-        };
-        color.map(|c| (c * level) as u8)
+    /// The preview imitates the keyboard's current effect (see preview.rs).
+    fn preview_color(&self, led: usize, t: f64) -> [u8; 3] {
+        super::preview::key_color(&self.state.borrow(), &self.keys.borrow(), led, t)
     }
 
     // ------------------------------------------------------------------ per-key
@@ -1491,21 +1517,6 @@ fn keys_layout() -> impl Iterator<Item = usize> {
     keys().into_iter().map(|k| k.led)
 }
 
-/// `colorsys.hsv_to_rgb(h, 1, 1)` scaled to 0-255.
-fn hsv(h: f64) -> [f64; 3] {
-    let i = (h * 6.0) as i64;
-    let f = h * 6.0 - i as f64;
-    let (v, p, q, t) = (1.0, 0.0, 1.0 - f, f);
-    let c = match i.rem_euclid(6) {
-        0 => [v, t, p],
-        1 => [q, v, p],
-        2 => [p, v, t],
-        3 => [p, q, v],
-        4 => [t, p, v],
-        _ => [v, p, q],
-    };
-    c.map(|x| x * 255.0)
-}
 
 // ---------------------------------------------------------------------- self-test
 

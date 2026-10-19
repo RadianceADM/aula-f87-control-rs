@@ -74,6 +74,8 @@ const MENU_XML: &str = r#"<node><interface name="com.canonical.dbusmenu">
 /// One menu entry. `toggle` is None, "checkmark" or "radio".
 #[derive(Clone, Default)]
 pub struct Item {
+    /// Identifies the item across menu rebuilds when its label changes (e.g. the battery level).
+    pub key: Option<&'static str>,
     pub label: String,
     pub action: Option<Rc<dyn Fn()>>,
     pub toggle: Option<&'static str>,
@@ -105,6 +107,10 @@ impl Item {
         self.enabled = enabled;
         self
     }
+    pub fn key(mut self, key: &'static str) -> Item {
+        self.key = Some(key);
+        self
+    }
 }
 
 struct Node {
@@ -122,6 +128,11 @@ struct Inner {
     tooltip: RefCell<String>,
     revision: Cell<u32>,
     nodes: RefCell<HashMap<i32, Node>>,
+    // Menu ids stay the same for the same item, and are never reused: the top-bar
+    // host updates items by id, and doesn't expect an id to change type (e.g. from
+    // a separator to an entry) when items come and go.
+    ids_by_key: RefCell<HashMap<String, i32>>,
+    next_id: Cell<i32>,
     available: Cell<bool>,
     ids: RefCell<Vec<gio::RegistrationId>>,
     unwatch: RefCell<Option<Box<dyn FnOnce()>>>,
@@ -151,6 +162,8 @@ impl Tray {
             tooltip: RefCell::new(title.into()),
             revision: Cell::new(1),
             nodes: RefCell::new(HashMap::new()),
+            ids_by_key: RefCell::new(HashMap::new()),
+            next_id: Cell::new(0),
             available: Cell::new(false),
             ids: RefCell::new(vec![]),
             unwatch: RefCell::new(None),
@@ -288,24 +301,46 @@ impl Tray {
         }
     }
 
-    /// Number the items depth-first; ids stay stable while the shape is the same.
+    /// Give every item its id (see `ids_by_key`) and remember the tree.
     fn rebuild(&self) {
         let mut nodes = HashMap::new();
         nodes.insert(0, Node { item: Item::default(), children: vec![] });
-        let mut counter = 0;
-        fn add(nodes: &mut HashMap<i32, Node>, counter: &mut i32, parent: i32, items: Vec<Item>) {
+        let mut ids = self.0.ids_by_key.borrow_mut();
+        let mut next = self.0.next_id.get();
+        fn add(
+            nodes: &mut HashMap<i32, Node>,
+            ids: &mut HashMap<String, i32>,
+            next: &mut i32,
+            parent: i32,
+            parent_key: &str,
+            items: Vec<Item>,
+        ) {
+            let mut separators = 0;
+            let mut seen: HashMap<String, u32> = HashMap::new();
             for item in items {
-                *counter += 1;
-                let id = *counter;
+                let own = if item.separator {
+                    separators += 1;
+                    format!("separator {separators}")
+                } else {
+                    item.key.map(String::from).unwrap_or_else(|| item.label.clone())
+                };
+                let n = seen.entry(own.clone()).or_insert(0);
+                *n += 1;
+                let key = if *n == 1 { format!("{parent_key}/{own}") } else { format!("{parent_key}/{own}#{n}") };
+                let id = *ids.entry(key.clone()).or_insert_with(|| {
+                    *next += 1;
+                    *next
+                });
                 let children = item.children.clone();
                 nodes.insert(id, Node { item, children: vec![] });
                 nodes.get_mut(&parent).unwrap().children.push(id);
                 if !children.is_empty() {
-                    add(nodes, counter, id, children);
+                    add(nodes, ids, next, id, &key, children);
                 }
             }
         }
-        add(&mut nodes, &mut counter, 0, (self.0.build_menu)());
+        add(&mut nodes, &mut ids, &mut next, 0, "", (self.0.build_menu)());
+        self.0.next_id.set(next);
         *self.0.nodes.borrow_mut() = nodes;
     }
 
