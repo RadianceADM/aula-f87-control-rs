@@ -31,15 +31,15 @@ jobs:
       - name: Window opens and draws every page (simulated keyboard)
         run: |
           cargo build --locked --features fake-keyboard
-          mkdir -p shots
-          AULA_F87_FAKE=1 AULA_F87_SCREENSHOTS=shots dbus-run-session -- \
+          shots="$RUNNER_TEMP/shots"; mkdir -p "$shots"
+          AULA_F87_FAKE=1 AULA_F87_SCREENSHOTS="$shots" dbus-run-session -- \
             xvfb-run -a -s "-screen 0 1280x1024x24" timeout 90 target/debug/aula-f87-control
-          ls shots
-          test "$(ls shots/*.png | wc -l)" -eq 5
+          ls "$shots"
+          test "$(ls "$shots"/*.png | wc -l)" -eq 5
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: screenshots
-          path: shots/
+          path: ${{ runner.temp }}/shots/
       - name: Package for crates.io (dry run)
         run: cargo publish --locked --dry-run
