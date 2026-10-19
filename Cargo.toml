@@ -1,0 +1,19 @@
+[package]
+name = "aula-f87-control-rs"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "Rust port of AULA F87 Control's music sync, to compare latency and CPU use with the Python app"
+repository = "https://github.com/RadianceADM/aula-f87-control-rs"
+
+[[bin]]
+name = "aula-f87-rs"
+path = "src/main.rs"
+
+[dependencies]
+libc = "0.2"
+realfft = "3.5"
+
+[profile.release]
+lto = true
+codegen-units = 1
