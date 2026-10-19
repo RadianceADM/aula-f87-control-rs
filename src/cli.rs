@@ -33,7 +33,7 @@ commands:
   sleep WHEN          when the backlight turns off: 'never' or idle minutes (1, 5, 10, 30)
   music               make the backlight follow what's playing (Ctrl+C stops)
                         --style bars|meter|rainbow|pulse
-                        --sensitivity 0.5-2    higher = taller bars
+                        --sensitivity 0.2-2    higher = taller bars
                         --brightness 0.1-1
                         --follow all|bass,vocals,beat
                         --seconds N            stop automatically after this long
@@ -152,7 +152,7 @@ fn parse_music(args: &[String]) -> Result<MusicArgs, String> {
                 }
                 m.params.follow = f;
             }
-            "--sensitivity" => m.params.sensitivity = num(value()?)?.clamp(0.5, 2.0),
+            "--sensitivity" => m.params.sensitivity = num(value()?)?.clamp(0.2, 2.0),
             "--brightness" => m.params.brightness = num(value()?)?.clamp(0.1, 1.0),
             "--seconds" => m.seconds = Some(num(value()?)?),
             // for measurements (see bench/)

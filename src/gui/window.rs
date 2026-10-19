@@ -219,7 +219,7 @@ impl Win {
                     .chain(MUSIC_FOLLOW)
                     .map(|(k, label)| (k, gtk::CheckButton::with_label(label)))
                     .collect(),
-                sensitivity: gtk::Scale::with_range(gtk::Orientation::Horizontal, 0.5, 2.0, 0.1),
+                sensitivity: gtk::Scale::with_range(gtk::Orientation::Horizontal, 0.2, 2.0, 0.05),
                 brightness_music: gtk::Scale::with_range(gtk::Orientation::Horizontal, 0.1, 1.0, 0.05),
                 worker: Worker::new(),
                 settings: RefCell::new(settings.clone()),
@@ -572,8 +572,8 @@ impl Win {
         group.add(&follow_row);
 
         for (scale, value, marks) in [
-            (&self.sensitivity, settings.music_sensitivity, [0.5, 1.0, 1.5, 2.0]),
-            (&self.brightness_music, settings.music_brightness, [0.25, 0.5, 0.75, 1.0]),
+            (&self.sensitivity, settings.music_sensitivity, vec![0.2, 0.35, 0.5, 1.0, 1.5, 2.0]),
+            (&self.brightness_music, settings.music_brightness, vec![0.25, 0.5, 0.75, 1.0]),
         ] {
             scale.set_value(value);
             scale.set_draw_value(false);

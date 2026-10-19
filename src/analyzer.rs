@@ -171,6 +171,8 @@ pub struct Analyzer {
 }
 
 const PULSE_FALL_PER_S: f64 = 3.0;
+/// Below this, lower sensitivity makes the bars shorter instead of narrowing the dB window.
+const MIN_SPAN_SENSITIVITY: f64 = 0.5;
 
 /// How fast the "All" bars follow the music: quick up, softer down, so they
 /// move smoothly instead of flickering frame to frame.
@@ -356,8 +358,12 @@ impl Analyzer {
     }
 
     /// samples: the last BASS_FFT_SIZE stereo samples, oldest first.
+    /// sensitivity: 0.2-2. From 0.5 up, a wider dB window makes bars sit higher;
+    /// below 0.5 the window stays and the bars are cut shorter (0.2 = 40 % height).
     pub fn update(&mut self, samples: &[[f32; 2]], dt: f64, sensitivity: f64, follow: Follow) {
         assert_eq!(samples.len(), BASS_FFT_SIZE);
+        let height = (sensitivity / MIN_SPAN_SENSITIVITY).min(1.0);
+        let sensitivity = sensitivity.max(MIN_SPAN_SENSITIVITY);
         for (i, s) in samples.iter().enumerate() {
             self.left[i] = s[0];
             self.right[i] = s[1];
@@ -401,8 +407,8 @@ impl Analyzer {
         self.beat = hit.max(self.beat - PULSE_FALL_PER_S * dt);
 
         if !follow.any() {
-            self.levels = full;
-            self.pulse = self.beat;
+            self.levels = full.map(|v| v * height);
+            self.pulse = self.beat * height;
             return;
         }
 
@@ -462,8 +468,8 @@ impl Analyzer {
             pulse = pulse.max(self.beat);
             merge(&mut levels, &part);
         }
-        self.levels = levels;
-        self.pulse = pulse;
+        self.levels = levels.map(|v| v * height);
+        self.pulse = pulse * height;
     }
 }
 

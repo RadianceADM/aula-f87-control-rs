@@ -60,7 +60,7 @@ impl Settings {
             s.music_style = (n as i64).clamp(0, 3) as u32;
         }
         if let Some(n) = num(get("music_sensitivity")) {
-            s.music_sensitivity = n.clamp(0.5, 2.0);
+            s.music_sensitivity = n.clamp(0.2, 2.0);
         }
         if let Some(n) = num(get("music_brightness")) {
             s.music_brightness = n.clamp(0.1, 1.0);
