@@ -120,6 +120,21 @@ for Rust.
 For comparison, the installed Python app (GTK window, music sync on) used **3.1 % of one
 core and 60 MB** over 20 seconds. Its own `pw-record` used about 0 %.
 
+## 4. The whole app
+
+Both GUI apps (v0.5.0 Rust, v0.4.2 Python) ran in the background with their top-bar icon and a
+simulated keyboard. Music sync was started from the top-bar menu over D-Bus, with this
+computer's audio, which may have been quiet. CPU and memory are for the app process, measured
+over 20 seconds.
+
+| | Rust | Python |
+|---|---|---|
+| Ready on D-Bus after launch | 0.11 s | 0.44 s |
+| Idle: CPU, memory | 0.0 %, 50 MB | 0.0 %, 72 MB |
+| Music sync on: CPU, memory | 0.4 %, 51 MB | 2.2 %, 84 MB |
+
+Most of the memory is GTK and libadwaita, which both apps load.
+
 ## Where the delay comes from
 
 From sound playing to keys lighting, roughly:

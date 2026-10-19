@@ -18,10 +18,13 @@ rate sets that. The Rust version is lighter:
 
 | | Rust | Python |
 |---|---|---|
-| CPU during music sync | 0.4 % of one core | 5.5 % |
-| Memory | 4 MB | 31 MB |
-| Start-up | 16 ms | 0.3 s |
+| Whole app, music sync on (top-bar icon, window closed) | 0.4 % CPU, 51 MB | 2.2 % CPU, 84 MB |
+| Music sync engine alone, on a test signal | 0.4 % CPU, 4 MB | 5.5 % CPU, 31 MB |
+| Start-up | 0.1 s | 0.4 s |
 | Install | one 2 MB program | Python, PyGObject, NumPy |
+
+Percentages are of one CPU core. Most of the app's memory is GTK itself, so the gap is smaller
+there than for the engine.
 
 [docs/COMPARISON.md](docs/COMPARISON.md) has the measurements and how to repeat them. The Python
 version is still the one to use on **Windows**.
