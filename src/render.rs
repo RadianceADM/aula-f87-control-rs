@@ -12,7 +12,7 @@ const PULSE: usize = 3;
 const RED: [f64; 3] = [255.0, 0.0, 0.0];
 const YELLOW: [f64; 3] = [255.0, 170.0, 0.0];
 const GREEN: [f64; 3] = [0.0, 255.0, 0.0];
-const METER_COLORS: [[f64; 3]; 6] = [GREEN, GREEN, GREEN, YELLOW, YELLOW, RED];
+const METER_COLORS: [[f64; 3]; 6] = [GREEN, GREEN, YELLOW, YELLOW, RED, RED]; // by height, bottom first
 
 /// (led, band, height above the bottom row) for every key.
 pub struct KeyBands {

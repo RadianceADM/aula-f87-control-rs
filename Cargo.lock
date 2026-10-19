@@ -16,7 +16,7 @@ dependencies = [
 
 [[package]]
 name = "aula-f87-control"
-version = "0.5.2"
+version = "0.5.3"
 dependencies = [
  "async-channel",
  "gtk4",
