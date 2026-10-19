@@ -1,14 +1,13 @@
 //! Analyzer state -> 126 LED colours. Port of `render()` in `aula_f87/music.py`.
 
 use crate::analyzer::{Analyzer, BANDS};
+pub use crate::device::Frame;
 use crate::layout::{self, PLANE, WIDTH_U};
 
 pub const STYLE_NAMES: [&str; 4] = ["bars", "meter", "rainbow", "pulse"];
 const METER: usize = 1;
 const RAINBOW: usize = 2;
 const PULSE: usize = 3;
-
-pub type Frame = [[u8; 3]; PLANE];
 
 const RED: [f64; 3] = [255.0, 0.0, 0.0];
 const YELLOW: [f64; 3] = [255.0, 170.0, 0.0];

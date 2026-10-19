@@ -1,4 +1,4 @@
-"""Python side of the comparison: the same offline loop as `aula-f87-rs render-file|bench`,
+"""Python side of the comparison: the same offline loop as `aula-f87-control render-file|bench`,
 using the Python app's own analyzer and renderer (aula_f87/music.py).
 
 python3 bench/py_frames.py render|bench AUDIO.raw [--style bars] [--follow all] [--fps 30]

@@ -1,19 +1,40 @@
 [package]
-name = "aula-f87-control-rs"
-version = "0.1.0"
+name = "aula-f87-control"
+version = "0.5.0"
 edition = "2021"
+rust-version = "1.80"
 license = "GPL-3.0-or-later"
-description = "Rust port of AULA F87 Control's music sync, to compare latency and CPU use with the Python app"
+description = "Backlight effects, per-key colors, music sync, sleep timer and battery level for AULA F87 / F87 Pro keyboards (GTK 4 / libadwaita app for Linux)"
 repository = "https://github.com/RadianceADM/aula-f87-control-rs"
+homepage = "https://github.com/RadianceADM/aula-f87-control-rs"
+readme = "README.md"
+keywords = ["aula", "keyboard", "rgb", "backlight", "gtk"]
+categories = ["hardware-support", "command-line-utilities", "gui"]
+exclude = ["/bench/audio", "/docs/screenshots", "/docs/social-preview.png", "/.github"]
+
+[lib]
+name = "aula_f87"
+path = "src/lib.rs"
 
 [[bin]]
-name = "aula-f87-rs"
+name = "aula-f87-control"
 path = "src/main.rs"
+
+[features]
+default = ["gui"]
+gui = ["dep:gtk", "dep:adw", "dep:async-channel"]
+# A keyboard in memory (AULA_F87_FAKE=1), for screenshots and GUI tests.
+fake-keyboard = []
 
 [dependencies]
 libc = "0.2"
 realfft = "3.5"
+serde_json = "1"
+gtk = { package = "gtk4", version = "0.11", features = ["v4_12"], optional = true }
+adw = { package = "libadwaita", version = "0.9", features = ["v1_5"], optional = true }
+async-channel = { version = "2", optional = true }
 
 [profile.release]
 lto = true
 codegen-units = 1
+strip = true

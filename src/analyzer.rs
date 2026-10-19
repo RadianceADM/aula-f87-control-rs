@@ -18,7 +18,7 @@ const HIGH_HZ: f64 = 16000.0;
 
 pub type Levels = [f64; BANDS];
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Follow {
     pub bass: bool,
     pub vocals: bool,

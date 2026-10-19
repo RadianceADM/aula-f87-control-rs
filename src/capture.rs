@@ -15,7 +15,7 @@ pub fn pw_record_command() -> Vec<String> {
     [
         "pw-record",
         "-P",
-        "{ stream.capture.sink=true node.name=aula-f87-music-rs node.description=\"AULA F87 music sync (Rust)\" }",
+        "{ stream.capture.sink=true node.name=aula-f87-music node.description=\"AULA F87 music sync\" }",
         "--raw", "--rate", "48000", "--channels", "2", "--format", "s16",
         "--latency", "20ms", "-",
     ]

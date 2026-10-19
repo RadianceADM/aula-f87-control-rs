@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build and test (Ubuntu 24.04, GTK 4.14, libadwaita 1.5)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: GTK 4 and libadwaita development files
+        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libadwaita-1-dev xvfb dbus-x11
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --locked
+      - name: Command line without GTK
+        run: cargo build --locked --no-default-features
+      - name: Settings-safety tests (simulated keyboard)
+        run: cargo test --locked --no-default-features
+      - name: Fails cleanly without a keyboard
+        run: |
+          set +e
+          out="$(target/debug/aula-f87-control status 2>&1)"; code=$?
+          echo "$out"
+          [ "$code" -ne 0 ] && echo "$out" | grep -q "No AULA F87 found"
+      - name: Window opens and draws every page (simulated keyboard)
+        run: |
+          cargo build --locked --features fake-keyboard
+          mkdir -p shots
+          AULA_F87_FAKE=1 AULA_F87_SCREENSHOTS=shots dbus-run-session -- \
+            xvfb-run -a -s "-screen 0 1280x1024x24" timeout 90 target/debug/aula-f87-control
+          ls shots
+          test "$(ls shots/*.png | wc -l)" -eq 5
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: screenshots
+          path: shots/
+      - name: Package for crates.io (dry run)
+        run: cargo publish --locked --dry-run

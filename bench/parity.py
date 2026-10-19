@@ -4,7 +4,7 @@ import subprocess
 import sys
 
 AUDIO = sys.argv[1]
-RUST = "target/release/aula-f87-rs"
+RUST = "target/release/aula-f87-control"
 rows = []
 for style, follow, few in itertools.product(("bars", "meter", "rainbow", "pulse"),
                                             ("all", "bass", "vocals", "beat", "bass,vocals,beat"),

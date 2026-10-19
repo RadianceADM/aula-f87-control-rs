@@ -40,7 +40,7 @@ for round_ in range(ROUNDS):
         frame_log = os.path.join(tmp, f"{name}{round_}.frames")
         feeder = f"{sys.executable} {here}/feeder.py {t0_log} {BURSTS} {round_}"
         if name == "rust":
-            cmd = [os.path.join(here, "..", "target", "release", "aula-f87-rs"), "music",
+            cmd = [os.path.join(here, "..", "target", "release", "aula-f87-control"), "music",
                    "--output", f"log:{frame_log}", "--seconds", str(SECONDS), "--capture-cmd", feeder]
         else:
             cmd = [sys.executable, os.path.join(here, "py_live.py"), frame_log, str(SECONDS),

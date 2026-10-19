@@ -1,0 +1,101 @@
+name: Release
+
+# Push a tag such as v0.5.1 (matching the version in Cargo.toml) to publish:
+#   - a GitHub release with the Linux x86_64 binary, with the matching section
+#     of CHANGELOG.md as release notes
+#   - the crate on crates.io, when the repository variable CRATES_PUBLISH is
+#     "true". It uses crates.io trusted publishing (no stored token) once this
+#     workflow is registered for the crate, or the CARGO_REGISTRY_TOKEN secret.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to publish, e.g. v0.5.0
+        required: true
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+      - name: GTK 4 and libadwaita development files
+        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libadwaita-1-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Tag matches the crate version
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 | python3 -c "import json,sys; print(json.load(sys.stdin)['packages'][0]['version'])")
+          test "v$version" = "$TAG" || { echo "Cargo.toml says $version, tag is $TAG"; exit 1; }
+      - name: Build
+        run: cargo build --release --locked
+      - name: Archive
+        run: |
+          name="aula-f87-control-${TAG#v}-x86_64-linux"
+          mkdir -p "dist/$name"
+          cp target/release/aula-f87-control README.md LICENSE CHANGELOG.md install.sh "dist/$name/"
+          tar -C dist -czf "dist/$name.tar.gz" "$name"
+          rm -r "dist/$name"
+          "target/release/aula-f87-control" --version
+      - name: Release notes from CHANGELOG.md
+        run: |
+          awk -v tag="$TAG" '
+            /^## / { if (found) exit; if (index($0, tag)) { found = 1; next } }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          test -s notes.md || { echo "No CHANGELOG.md section for $TAG"; exit 1; }
+          cat notes.md
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: |
+            dist/
+            notes.md
+
+  github-release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: artifacts
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; leaving it as it is."
+          else
+            gh release create "$TAG" artifacts/dist/* --repo "$GITHUB_REPOSITORY" \
+              --title "AULA F87 Control (Rust) $TAG" --notes-file artifacts/notes.md
+          fi
+
+  crates-io:
+    needs: build
+    if: vars.CRATES_PUBLISH == 'true'
+    runs-on: ubuntu-24.04
+    environment: crates-io
+    permissions:
+      id-token: write   # trusted publishing
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+      - name: GTK 4 and libadwaita development files
+        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libadwaita-1-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+        continue-on-error: true   # not registered yet: fall back to the secret
+      - name: Publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token || secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish --locked

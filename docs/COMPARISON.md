@@ -56,7 +56,7 @@ The two versions do the same work, so the timings below compare like with like.
 
 ## 2. Processing time per frame
 
-This measures analysis plus rendering of one frame. Command: `aula-f87-rs bench` /
+This measures analysis plus rendering of one frame. Command: `aula-f87-control bench` /
 `bench/py_frames.py bench`.
 
 Real music, 2,390 frames, two runs, with the Python app's music sync running in the
@@ -170,7 +170,7 @@ binary for music sync. The frames and the lock file are already compatible.
 
 - **On the real keyboard.** The lock file was held by the running app's music sync during the
   tests, and this port respects it. To try it, stop music sync in the app, then run
-  `target/release/aula-f87-rs music` (Ctrl+C stops it). The USB transfer is the same kernel
+  `target/release/aula-f87-control music` (Ctrl+C stops it). The USB transfer is the same kernel
   call in both versions.
 - **Light output itself.** Measuring when the LEDs actually change needs a camera or a light
   sensor. That part is identical for both versions anyway.
@@ -187,7 +187,7 @@ is 1.8 MB.
 cargo build --release
 python3 bench/make_audio.py bench/audio/mix-10s.raw         # or any pw-record --raw capture
 python3 bench/parity.py bench/audio/mix-10s.raw             # same output?
-target/release/aula-f87-rs bench bench/audio/mix-10s.raw --repeat 10
+target/release/aula-f87-control bench bench/audio/mix-10s.raw --repeat 10
 python3 bench/py_frames.py bench bench/audio/mix-10s.raw --repeat 10
 python3 bench/live.py 30 2                                  # real-time loop, ~4 minutes
 ```
