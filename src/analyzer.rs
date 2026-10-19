@@ -153,11 +153,12 @@ pub struct Analyzer {
     bass_window: Vec<f32>,
     full: BandMeter,
     bass: BandMeter,
-    vocals: BandMeter,
     prev_low_db: Option<[f64; 4]>,
     flux_avg: f64,
     beat: f64,
     cross: Option<(Vec<Complex32>, Vec<f32>, Vec<f32>)>, // smoothed L*conj(R), |L|^2, |R|^2
+    voice: Voice,
+    smooth_full: Levels,
     pub levels: Levels,
     pub pulse: f64,
     fft: Fft,
@@ -170,6 +171,149 @@ pub struct Analyzer {
 }
 
 const PULSE_FALL_PER_S: f64 = 3.0;
+
+/// How fast the "All" bars follow the music: quick up, softer down, so they
+/// move smoothly instead of flickering frame to frame.
+const ALL_RISE_S: f64 = 0.025;
+const ALL_FALL_S: f64 = 0.10;
+
+/// Exponential smoothing step towards `target` with time constant `tau`.
+fn ease(value: f64, target: f64, dt: f64, tau: f64) -> f64 {
+    value + (target - value) * (1.0 - (-dt / tau).exp())
+}
+
+/// [0.2, 0.6, 0.2] blur across neighbouring columns.
+fn blur(levels: &Levels) -> Levels {
+    std::array::from_fn(|i| {
+        let left = levels[i.saturating_sub(1)];
+        let right = levels[(i + 1).min(BANDS - 1)];
+        0.2 * left + 0.6 * levels[i] + 0.2 * right
+    })
+}
+
+fn median(values: &mut [f32]) -> f32 {
+    values.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    values[values.len() / 2]
+}
+
+/// The singing voice: what sits in the centre of the stereo mix, is harmonic
+/// (steady partials, unlike drum hits) and lies in the voice range. Gives a
+/// loudness and the column the voice's pitch belongs to.
+struct Voice {
+    lo: usize, // FFT bins of the voice range
+    hi: usize,
+    history: Vec<Vec<f32>>, // last centre spectra (voice range), for the harmonic part
+    next: usize,
+    reference: f64, // automatic gain, dB
+    level: f64,     // 0..1, smoothed
+    column: f64,    // where the voice is, 0..BANDS-1
+}
+
+impl Voice {
+    const LOW_HZ: f64 = 300.0; // below: 808s and bass harmonics
+    const HIGH_HZ: f64 = 3500.0; // above: cymbals, hi-hats, breath
+    const HISTORY: usize = 5; // frames (~0.17 s at 30 fps) for "steady"
+    const SPREAD: usize = 8; // bins either side for "broadband"
+    const PITCH_LOW: f64 = 90.0;
+    const PITCH_HIGH: f64 = 700.0;
+    const RISE_S: f64 = 0.03;
+    const FALL_S: f64 = 0.15;
+    const GLIDE_S: f64 = 0.06;
+    const REF_FALL_DB_PER_S: f64 = 4.0;
+    const SPAN_DB: f64 = 20.0;
+    const WIDTH: f64 = 2.3; // columns, of the light "hill" around the voice
+
+    fn new() -> Voice {
+        let bin = |hz: f64| (hz * FFT_SIZE as f64 / RATE).round() as usize;
+        let (lo, hi) = (bin(Self::LOW_HZ), bin(Self::HIGH_HZ));
+        Voice {
+            lo,
+            hi,
+            history: vec![vec![0.0; hi - lo]; Self::HISTORY],
+            next: 0,
+            reference: -100.0 + Self::SPAN_DB,
+            level: 0.0,
+            column: BANDS as f64 / 2.0,
+        }
+    }
+
+    /// centre: magnitudes of the centred part of the mix (all bins), or None for silence.
+    fn update(&mut self, centre: Option<&[f32]>, dt: f64, sensitivity: f64, norm: f32) -> Levels {
+        let n = self.hi - self.lo;
+        let mut target = 0.0;
+        if let Some(centre) = centre {
+            let now = &centre[self.lo..self.hi];
+            self.history[self.next].copy_from_slice(now);
+            self.next = (self.next + 1) % Self::HISTORY;
+            // Harmonic/percussive split: steady over time (median across frames)
+            // versus spread over frequency (median across neighbouring bins).
+            let mut voice = vec![0f32; n];
+            let mut across_time = vec![0f32; Self::HISTORY];
+            for i in 0..n {
+                for (j, frame) in self.history.iter().enumerate() {
+                    across_time[j] = frame[i];
+                }
+                let steady = median(&mut across_time);
+                let (a, b) = (i.saturating_sub(Self::SPREAD), (i + Self::SPREAD + 1).min(n));
+                let mut around = now[a..b].to_vec();
+                let broad = median(&mut around);
+                let mask = steady * steady / (steady * steady + broad * broad + 1e-20);
+                voice[i] = now[i] * mask;
+            }
+            let energy = (voice.iter().map(|v| v * v).sum::<f32>() / n as f32).sqrt() / norm;
+            let db = 20.0 * (energy as f64 + 1e-12).log10();
+            let span = Self::SPAN_DB * sensitivity;
+            self.reference = db.max(self.reference - Self::REF_FALL_DB_PER_S * dt).max(-100.0 + span);
+            target = ((db - (self.reference - span)) / span).clamp(0.0, 1.0);
+            if let Some(column) = self.pitch_column(&voice) {
+                if self.level > 0.05 {
+                    self.column = ease(self.column, column, dt, Self::GLIDE_S);
+                }
+            }
+        }
+        let tau = if target > self.level { Self::RISE_S } else { Self::FALL_S };
+        self.level = ease(self.level, target, dt, tau);
+        std::array::from_fn(|i| {
+            let d = i as f64 - self.column;
+            self.level * (0.15 + 0.85 * (-d * d / (2.0 * Self::WIDTH * Self::WIDTH)).exp())
+        })
+    }
+
+    /// The column for the voice's pitch: low notes left, high notes right.
+    /// None if no clear pitch.
+    fn pitch_column(&self, voice: &[f32]) -> Option<f64> {
+        let hz_per_bin = RATE / FFT_SIZE as f64;
+        let at = |hz: f64| -> f32 {
+            let b = (hz / hz_per_bin).round() as isize - self.lo as isize;
+            (b - 1..=b + 1).filter(|&i| i >= 0 && (i as usize) < voice.len()).map(|i| voice[i as usize]).fold(0.0, f32::max)
+        };
+        let average = voice.iter().sum::<f32>() / voice.len() as f32 + 1e-12;
+        let steps = 48;
+        let mut best = (0.0f32, 0.0f64);
+        for s in 0..steps {
+            let f0 = Self::PITCH_LOW * (Self::PITCH_HIGH / Self::PITCH_LOW).powf(s as f64 / (steps - 1) as f64);
+            let (mut on, mut between, mut count) = (0f32, 0f32, 0);
+            for h in 1..=10 {
+                let hz = f0 * h as f64;
+                if hz < Self::LOW_HZ || hz + f0 / 2.0 > Self::HIGH_HZ {
+                    continue;
+                }
+                on += at(hz);
+                between += at(hz + f0 / 2.0);
+                count += 1;
+            }
+            if count >= 3 {
+                let score = (on - 0.5 * between) / count as f32;
+                if score > best.0 {
+                    best = (score, f0);
+                }
+            }
+        }
+        (best.0 / average > 2.0).then(|| {
+            (BANDS - 1) as f64 * (best.1 / Self::PITCH_LOW).ln() / (Self::PITCH_HIGH / Self::PITCH_LOW).ln()
+        })
+    }
+}
 const CENTRE_SMOOTH_S: f64 = 0.25;
 const BEAT_BANDS: usize = 4;
 
@@ -193,11 +337,12 @@ impl Analyzer {
             bass_window: hanning(BASS_FFT_SIZE),
             full: BandMeter::new(FFT_SIZE, LOW_HZ, HIGH_HZ, true),
             bass: BandMeter::new(BASS_FFT_SIZE, 30.0, 300.0, false),
-            vocals: BandMeter::new(FFT_SIZE, 150.0, 5000.0, true),
             prev_low_db: None,
             flux_avg: 0.0,
             beat: 0.0,
             cross: None,
+            voice: Voice::new(),
+            smooth_full: [0.0; BANDS],
             levels: [0.0; BANDS],
             pulse: 0.0,
             fft: Fft::new(&mut planner, FFT_SIZE),
@@ -232,7 +377,12 @@ impl Analyzer {
         };
         let spectrum: Option<Vec<f32>> =
             (!silent).then(|| magnitude.iter().map(|m| m / norm).collect());
-        let full = self.full.update(spectrum.as_deref(), dt, sensitivity);
+        let raw = self.full.update(spectrum.as_deref(), dt, sensitivity);
+        for i in 0..BANDS {
+            let tau = if raw[i] > self.smooth_full[i] { ALL_RISE_S } else { ALL_FALL_S };
+            self.smooth_full[i] = ease(self.smooth_full[i], raw[i], dt, tau);
+        }
+        let full = blur(&self.smooth_full);
 
         // Beat: sudden rises in the low bands (spectral flux) against their recent average.
         let mut hit = 0.0;
@@ -270,7 +420,7 @@ impl Analyzer {
             merge(&mut levels, &part);
         }
         if follow.vocals {
-            let vocal_spec: Option<Vec<f32>> = if silent {
+            let centre: Option<Vec<f32>> = if silent {
                 None
             } else {
                 // Keep what sits in the centre: per frequency, L and R must be
@@ -298,14 +448,13 @@ impl Analyzer {
                         .map(|i| {
                             let coherence = lr[i].norm().powi(2) / (ll[i] * rr[i] + 1e-20);
                             let balance = 2.0 * (ll[i] * rr[i]).sqrt() / (ll[i] + rr[i] + 1e-20);
-                            let mask = (coherence * balance).clamp(0.0, 1.0).powi(2);
-                            magnitude[i] * mask / norm
+                            magnitude[i] * (coherence * balance).clamp(0.0, 1.0).powi(2)
                         })
                         .collect(),
                 )
             };
-            let part = self.vocals.update(vocal_spec.as_deref(), dt, sensitivity);
-            pulse = pulse.max(part.iter().sum::<f64>() / BANDS as f64);
+            let part = self.voice.update(centre.as_deref(), dt, sensitivity, norm);
+            pulse = pulse.max(self.voice.level);
             merge(&mut levels, &part);
         }
         if follow.beat {

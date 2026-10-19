@@ -209,7 +209,7 @@ pub fn main(args: Vec<String>) -> i32 {
             Ok(m) => music(m),
             Err(e) => usage(&e),
         },
-        "render-file" | "bench" => match parse_music(&opts) {
+        "render-file" | "bench" | "levels-file" => match parse_music(&opts) {
             Ok(m) => offline(&cmd, m),
             Err(e) => usage(&e),
         },
@@ -393,6 +393,26 @@ fn read_raw(path: &str) -> Result<Vec<[f32; 2]>, String> {
         .collect())
 }
 
+/// Offline: the analyser's column levels and pulse for every frame (for tuning).
+fn levels_file(m: &MusicArgs, audio: &[[f32; 2]]) {
+    let fps = m.fps.unwrap_or(30.0);
+    let hop = (RATE / fps) as usize;
+    let p = m.params;
+    let mut analyzer = Analyzer::new();
+    let mut ring = Ring::default();
+    let mut samples = vec![[0f32; 2]; BASS_FFT_SIZE];
+    let mut out = BufWriter::new(std::io::stdout().lock());
+    for chunk in audio.chunks_exact(hop) {
+        for s in chunk {
+            ring.push(*s);
+        }
+        ring.copy_into(&mut samples);
+        analyzer.update(&samples, 1.0 / fps, p.sensitivity, p.follow);
+        let cells: Vec<String> = analyzer.levels.iter().chain([&analyzer.pulse]).map(|v| format!("{v:.4}")).collect();
+        let _ = writeln!(out, "{}", cells.join(","));
+    }
+}
+
 /// Offline: push 1/fps of audio per frame, analyse, render.
 fn run_file(m: &MusicArgs, audio: &[[f32; 2]], keep: bool) -> (Vec<Frame>, Vec<f64>) {
     let fps = m.fps.unwrap_or(30.0);
@@ -441,7 +461,9 @@ fn offline(cmd: &str, m: MusicArgs) -> i32 {
             return 1;
         }
     };
-    if cmd == "render-file" {
+    if cmd == "levels-file" {
+        levels_file(&m, &audio);
+    } else if cmd == "render-file" {
         let (frames, mut times) = run_file(&m, &audio, true);
         let mut out = BufWriter::new(std::io::stdout().lock());
         for f in &frames {

@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.5.1 — 2026-10-20
+
+- **Music sync: Vocals follows the singing voice.** It keeps what sits in the centre of the
+  stereo mix and is harmonic, so drum hits, the 808 and wide instruments drop out. The keys
+  glow while someone sings, centred on the column of the sung pitch, and go dark between
+  vocal lines.
+  - On a test mix with drums, an 808, a wide pad and a voice singing in phrases, the lights
+    are about 3.6× brighter while the voice sings than in the gaps. Before, it was 1.8×. They
+    now follow the melody: the correlation with the pitch is 0.76, where it was about 0.
+  - On real hip-hop, the Vocals lights no longer move with the beat. The correlation with the
+    drums fell from 0.20 to 0.03.
+- **Smoother All bars.** They still rise at once, but fall smoothly and are slightly blended
+  with their neighbours. Frame-to-frame flicker is halved, and the reaction time is the same.
+  Bass and Beat are unchanged.
+- **The preview shows the keyboard as it is.** It imitates the current effect as it moves
+  (breathing, rainbow wave, raindrops, snake and so on). It also shows the light bar above the
+  arrow keys and the side lights, and picks up changes made with Fn shortcuts.
+- **Top-bar menu fixed.** Its items could show the wrong labels and clicks could hit the wrong
+  item after the battery item appeared.
+- Over 2.4G, the window shows the model name it learned over the cable (e.g. F87 Pro).
+
 ## v0.5.0 — 2026-10-20
 
 - **Rewritten in Rust.** Same window, top-bar icon, features and settings as the Python app
