@@ -16,6 +16,7 @@
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
 use std::io;
+#[cfg(unix)]
 use std::os::unix::io::AsRawFd;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -175,6 +176,9 @@ impl DeviceLock {
         if std::env::var_os("AULA_F87_FAKE").is_some() {
             return config_dir().join("fake.lock"); // never wait for the real keyboard's users
         }
+        #[cfg(windows)]
+        let base = env_dir("LOCALAPPDATA").unwrap_or_else(home); // same file as the Python app
+        #[cfg(unix)]
         let base = match std::env::var("XDG_RUNTIME_DIR") {
             Ok(d) if !d.is_empty() => PathBuf::from(d),
             _ => match std::env::var("XDG_CACHE_HOME") {
@@ -191,7 +195,7 @@ impl DeviceLock {
         let file = OpenOptions::new().create(true).append(true).read(true).open(&path).ok()?;
         let deadline = Instant::now() + timeout;
         loop {
-            if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+            if lock_file(&file) {
                 return Some(DeviceLock { _file: file }); // released when the file closes
             }
             if Instant::now() > deadline {
@@ -212,6 +216,23 @@ impl DeviceLock {
     }
 }
 
+#[cfg(unix)]
+fn lock_file(file: &File) -> bool {
+    unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) == 0 }
+}
+
+/// LockFileEx over the whole file; the Python app locks its first byte, so the
+/// two exclude each other.
+#[cfg(windows)]
+fn lock_file(file: &File) -> bool {
+    file.try_lock().is_ok()
+}
+
+#[cfg(windows)]
+fn env_dir(name: &str) -> Option<PathBuf> {
+    std::env::var_os(name).filter(|v| !v.is_empty()).map(PathBuf::from)
+}
+
 /// Waits used by the safety logic; skipped in unit tests.
 fn pause(ms: u64) {
     if !cfg!(test) {
@@ -219,10 +240,23 @@ fn pause(ms: u64) {
     }
 }
 
+#[cfg(unix)]
 pub fn home() -> PathBuf {
     PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/".into()))
 }
 
+#[cfg(windows)]
+pub fn home() -> PathBuf {
+    env_dir("USERPROFILE").unwrap_or_else(|| PathBuf::from("C:\\"))
+}
+
+/// %APPDATA%\aula-f87-control on Windows, like the Python app.
+#[cfg(windows)]
+pub fn config_dir() -> PathBuf {
+    env_dir("APPDATA").unwrap_or_else(home).join("aula-f87-control")
+}
+
+#[cfg(unix)]
 pub fn config_dir() -> PathBuf {
     match std::env::var("XDG_CONFIG_HOME") {
         Ok(d) if !d.is_empty() => PathBuf::from(d),
@@ -272,10 +306,23 @@ pub trait Link: Send {
     fn alive(&self) -> bool;
 }
 
+#[cfg(unix)]
 const TRANSIENT: [i32; 4] = [libc::EPROTO, libc::EPIPE, libc::ETIMEDOUT, libc::EAGAIN];
 
+#[cfg(unix)]
 fn transient(e: &io::Error) -> bool {
     e.raw_os_error().is_some_and(|c| TRANSIENT.contains(&c))
+}
+
+/// Windows reports a stalled transfer as a general failure, a timeout or an I/O
+/// device error, depending on the driver. Only "the device is gone" codes are
+/// treated as final (as the Python app did through hidapi, which gave no code).
+#[cfg(windows)]
+fn transient(e: &io::Error) -> bool {
+    // ERROR_FILE_NOT_FOUND, ERROR_INVALID_HANDLE, ERROR_BAD_COMMAND,
+    // ERROR_NO_SUCH_DEVICE, ERROR_DEVICE_NOT_CONNECTED, ERROR_DEVICE_REMOVED
+    const GONE: [i32; 6] = [2, 6, 22, 433, 1167, 1617];
+    !e.raw_os_error().is_some_and(|c| GONE.contains(&c))
 }
 
 fn model_name(byte: u8) -> &'static str {

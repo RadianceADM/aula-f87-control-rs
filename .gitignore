@@ -1,3 +1,4 @@
 /target
 __pycache__/
 /bench/audio/music-*.raw
+/windows/target

@@ -1,11 +1,12 @@
-//! Audio capture: runs `pw-record` (the same command as the Python app) and
-//! keeps the most recent BASS_FFT_SIZE stereo samples.
+//! Audio capture: runs `pw-record` (the same command as the Python app) on
+//! Linux, or WASAPI loopback on Windows (`wasapi.rs`), and keeps the most
+//! recent BASS_FFT_SIZE stereo samples.
 
 use std::io::Read;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::thread;
+use std::thread::{self, JoinHandle};
 
 use crate::analyzer::BASS_FFT_SIZE;
 
@@ -53,7 +54,9 @@ impl Ring {
 pub struct Capture {
     ring: Arc<Mutex<Ring>>,
     alive: Arc<AtomicBool>,
-    child: Child,
+    child: Option<Child>,
+    stop: Arc<AtomicBool>,
+    thread: Option<JoinHandle<()>>,
 }
 
 impl Capture {
@@ -89,7 +92,21 @@ impl Capture {
             }
             a.store(false, Ordering::SeqCst);
         });
-        Ok(Capture { ring, alive, child })
+        Ok(Capture { ring, alive, child: Some(child), stop: Arc::new(AtomicBool::new(false)), thread: None })
+    }
+
+    /// Windows: listen to the default speaker through WASAPI loopback.
+    #[cfg(windows)]
+    pub fn loopback() -> std::io::Result<Capture> {
+        let ring = Arc::new(Mutex::new(Ring::default()));
+        let alive = Arc::new(AtomicBool::new(true));
+        let stop = Arc::new(AtomicBool::new(false));
+        let (r, a, s) = (ring.clone(), alive.clone(), stop.clone());
+        let thread = thread::Builder::new().name("aula-loopback".into()).spawn(move || {
+            crate::wasapi::run(r, s);
+            a.store(false, Ordering::SeqCst);
+        })?;
+        Ok(Capture { ring, alive, child: None, stop, thread: Some(thread) })
     }
 
     pub fn alive(&self) -> bool {
@@ -103,7 +120,13 @@ impl Capture {
 
 impl Drop for Capture {
     fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        self.stop.store(true, Ordering::SeqCst);
+        if let Some(child) = self.child.as_mut() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        if let Some(t) = self.thread.take() {
+            let _ = t.join();
+        }
     }
 }

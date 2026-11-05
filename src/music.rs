@@ -1,7 +1,8 @@
 //! Make the backlight follow whatever the computer is playing.
 //!
 //! Audio comes from the default output's monitor ("what you hear") through
-//! PipeWire's `pw-record`, so it works with any player. Frames are sent as live,
+//! PipeWire's `pw-record` on Linux and WASAPI loopback on Windows, so it works
+//! with any player. Frames are sent as live,
 //! unsaved frames; the keyboard returns to its stored lighting by itself shortly
 //! after they stop.
 
@@ -13,7 +14,9 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use crate::analyzer::{Analyzer, Follow, BASS_FFT_SIZE};
-use crate::capture::{self, Capture};
+#[cfg(not(windows))]
+use crate::capture;
+use crate::capture::Capture;
 use crate::device::{DeviceLock, Error, Frame, Keyboard};
 use crate::layout::PLANE;
 use crate::render::{render, KeyBands};
@@ -53,10 +56,17 @@ pub enum Sink {
     Log(BufWriter<File>, f64, bool), // writer, fps, few colours
 }
 
+#[cfg(unix)]
 pub fn monotonic_ns() -> u64 {
     let mut ts = libc::timespec { tv_sec: 0, tv_nsec: 0 };
     unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts) };
     ts.tv_sec as u64 * 1_000_000_000 + ts.tv_nsec as u64
+}
+
+#[cfg(not(unix))]
+pub fn monotonic_ns() -> u64 {
+    static START: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
+    START.get_or_init(Instant::now).elapsed().as_nanos() as u64
 }
 
 /// Background loop: capture -> analyse -> render -> send live frames.
@@ -81,15 +91,16 @@ impl MusicSync {
             })?),
             Sink::Log(..) => None,
         };
-        let cmd = capture_cmd.unwrap_or_else(capture::pw_record_command);
-        let capture = Capture::start(&cmd).map_err(|e| MusicError {
-            message: if e.kind() == std::io::ErrorKind::NotFound && cmd[0] == "pw-record" {
-                "pw-record was not found. Install it with: sudo apt install pipewire-bin".into()
-            } else {
-                format!("Couldn't start {}: {e}", cmd[0])
-            },
-            device: false,
-        })?;
+        let capture = match capture_cmd {
+            Some(cmd) => start_command(&cmd)?,
+            #[cfg(windows)]
+            None => Capture::loopback().map_err(|e| MusicError {
+                message: format!("Couldn't listen to the computer's sound: {e}"),
+                device: false,
+            })?,
+            #[cfg(not(windows))]
+            None => start_command(&capture::pw_record_command())?,
+        };
         let params = Arc::new(Mutex::new(params));
         let frames = Arc::new(AtomicU64::new(0));
         let latest = Arc::new(Mutex::new([[0u8; 3]; PLANE]));
@@ -126,6 +137,17 @@ impl Drop for MusicSync {
     fn drop(&mut self) {
         self.stop();
     }
+}
+
+fn start_command(cmd: &[String]) -> Result<Capture, MusicError> {
+    Capture::start(cmd).map_err(|e| MusicError {
+        message: if e.kind() == std::io::ErrorKind::NotFound && cmd[0] == "pw-record" {
+            "pw-record was not found. Install it with: sudo apt install pipewire-bin".into()
+        } else {
+            format!("Couldn't start {}: {e}", cmd[0])
+        },
+        device: false,
+    })
 }
 
 fn run(

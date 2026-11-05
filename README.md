@@ -4,8 +4,8 @@
 [![crates.io](https://img.shields.io/crates/v/aula-f87-control)](https://crates.io/crates/aula-f87-control)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
 
-This app controls the lighting of the **AULA F87 / F87 Pro** mechanical keyboard on **Linux**,
-without AULA's own software. It's the Rust version of
+This app controls the lighting of the **AULA F87 / F87 Pro** mechanical keyboard on **Linux** and
+**Windows**, without AULA's own software. It's the Rust version of
 [AULA F87 Control](https://github.com/RadianceADM/aula-f87-control). It has the same GNOME window
 and top-bar icon, the same features and the same settings files, with a Rust back end.
 
@@ -26,8 +26,30 @@ rate sets that. The Rust version is lighter:
 Percentages are of one CPU core. Most of the app's memory is GTK itself, so the gap is smaller
 there than for the engine.
 
-[docs/COMPARISON.md](docs/COMPARISON.md) has the measurements and how to repeat them. The Python
-version is still the one to use on **Windows**.
+[docs/COMPARISON.md](docs/COMPARISON.md) has the measurements and how to repeat them.
+
+## Windows
+
+The Windows app is a native **WinUI 3** app written in Rust with Microsoft's
+[windows-reactor](https://github.com/microsoft/windows-rs/tree/master/crates/libs/reactor)
+(windows-rs). It uses the same Rust core as the Linux app, so the music sync, the keyboard protocol
+and the safety checks are the same. It needs Windows 10 1809 or newer, or Windows 11, 64-bit.
+
+- **Pages:** Lighting, Per-key colors, Music sync and About, with Windows 11's own controls on
+  Mica. The window adapts to its width.
+- **Tray icon:** the same menu as the Linux top-bar icon. Closing the window keeps the app in the
+  tray; Quit in the menu ends it. It starts at login in the tray (turn that off in the menu).
+- **Music sync** listens to the default speaker through WASAPI loopback, so it works with any
+  player, and follows the speaker when you switch it.
+- **No AULA software or drivers needed.** Close or uninstall AULA's own app: two programs
+  driving the lights at once fight each other.
+- Install with `AULA-F87-Control-<version>-Setup.exe` (per user, no admin rights). Uninstall it
+  from Settings → Apps. Settings stay in `%APPDATA%\aula-f87-control`, the same files as the
+  Python app.
+- Over the USB cable the keyboard takes about 15 live frames a second on Windows: each 520-byte
+  frame takes 67 ms over the keyboard's USB control channel.
+
+[windows/README.md](windows/README.md) explains how it's built.
 
 ## Features
 

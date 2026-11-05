@@ -119,7 +119,45 @@ pub fn battery_text(battery: Option<&Battery>, wired: bool, last: Option<(i64, f
     "Not reported".to_string()
 }
 
+/// Local-time strftime: `%H`, `%M`, `%b` and `%d` (the formats used here),
+/// through Windows' time-zone conversion.
+#[cfg(windows)]
+pub fn strftime(fmt: &str, unix: f64) -> String {
+    use windows::Win32::Foundation::{FILETIME, SYSTEMTIME};
+    use windows::Win32::System::Time::{FileTimeToSystemTime, SystemTimeToTzSpecificLocalTime};
+    const MONTHS: [&str; 12] = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    let ticks = ((unix.max(0.0) + 11_644_473_600.0) * 10_000_000.0) as u64;
+    let ft = FILETIME { dwLowDateTime: ticks as u32, dwHighDateTime: (ticks >> 32) as u32 };
+    let (mut utc, mut local) = (SYSTEMTIME::default(), SYSTEMTIME::default());
+    unsafe {
+        if FileTimeToSystemTime(&ft, &mut utc).is_err() || SystemTimeToTzSpecificLocalTime(None, &utc, &mut local).is_err() {
+            return String::new();
+        }
+    }
+    let mut out = String::new();
+    let mut chars = fmt.chars();
+    while let Some(c) = chars.next() {
+        if c != '%' {
+            out.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('H') => out += &format!("{:02}", local.wHour),
+            Some('M') => out += &format!("{:02}", local.wMinute),
+            Some('d') => out += &format!("{:02}", local.wDay),
+            Some('b') => out += MONTHS[(local.wMonth.clamp(1, 12) - 1) as usize],
+            Some(o) => {
+                out.push('%');
+                out.push(o);
+            }
+            None => out.push('%'),
+        }
+    }
+    out
+}
+
 /// Local-time strftime via libc.
+#[cfg(unix)]
 pub fn strftime(fmt: &str, unix: f64) -> String {
     let t = unix as libc::time_t;
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };

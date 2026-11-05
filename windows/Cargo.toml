@@ -1,0 +1,40 @@
+[package]
+name = "aula-f87-control-windows"
+version = "0.7.0"
+edition = "2024"
+rust-version = "1.95"
+license = "GPL-3.0-or-later"
+description = "AULA F87 Control for Windows: WinUI 3 window and tray icon (windows-reactor) on the shared Rust core"
+repository = "https://github.com/RadianceADM/aula-f87-control-rs"
+publish = false
+
+[[bin]]
+name = "AulaF87Control"
+path = "src/main.rs"
+
+[dependencies]
+aula-f87-control = { path = "..", default-features = false }
+# WinUI 3 from Rust. 0.100.0 on crates.io predates Application / NotifyIcon, so
+# build.ps1 patches both crates to windows-rs at a pinned commit (see README).
+windows-reactor = "0.100"
+
+[dependencies.windows]
+version = "0.62"
+features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Registry",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+]
+
+[build-dependencies]
+windows-reactor-setup = "0.100"
+embed-resource = "3"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

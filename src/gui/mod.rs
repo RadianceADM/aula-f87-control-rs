@@ -3,7 +3,7 @@
 
 #[cfg(feature = "fake-keyboard")]
 mod shots;
-mod preview;
+use crate::preview;
 mod tray;
 mod view;
 mod window;

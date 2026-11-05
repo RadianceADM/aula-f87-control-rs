@@ -1,10 +1,10 @@
 [package]
 name = "aula-f87-control"
-version = "0.5.3"
+version = "0.7.0"
 edition = "2021"
 rust-version = "1.80"
 license = "GPL-3.0-or-later"
-description = "Backlight effects, per-key colors, music sync, sleep timer and battery level for AULA F87 / F87 Pro keyboards (GTK 4 / libadwaita app for Linux)"
+description = "Backlight effects, per-key colors, music sync, sleep timer and battery level for AULA F87 / F87 Pro keyboards (GTK 4 / libadwaita app for Linux; the core also runs the Windows app)"
 repository = "https://github.com/RadianceADM/aula-f87-control-rs"
 homepage = "https://github.com/RadianceADM/aula-f87-control-rs"
 readme = "README.md"
@@ -27,12 +27,36 @@ gui = ["dep:gtk", "dep:adw", "dep:async-channel"]
 fake-keyboard = []
 
 [dependencies]
-libc = "0.2"
 realfft = "3.5"
 serde_json = "1"
 gtk = { package = "gtk4", version = "0.11", features = ["v4_12"], optional = true }
 adw = { package = "libadwaita", version = "0.9", features = ["v1_5"], optional = true }
 async-channel = { version = "2", optional = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+# Windows: HID through the Win32 HID API, music sync through WASAPI loopback.
+[target.'cfg(windows)'.dependencies.windows]
+version = "0.62"
+features = [
+    "Win32_Foundation",
+    "Win32_Devices_HumanInterfaceDevice",
+    "Win32_Devices_DeviceAndDriverInstallation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_System_Threading",
+    "Win32_Security",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Variant",
+    "Win32_Media_Audio",
+    "Win32_Media_KernelStreaming",
+    "Win32_Media_Multimedia",
+    "Win32_Devices_FunctionDiscovery",
+    "Win32_UI_Shell_PropertiesSystem",
+    "Win32_System_Time",
+]
 
 [profile.release]
 lto = true

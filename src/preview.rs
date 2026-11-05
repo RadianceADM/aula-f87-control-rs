@@ -8,10 +8,18 @@
 use std::f64::consts::TAU;
 use std::sync::OnceLock;
 
-use super::view::Strips;
 use crate::device::{standard_color, Frame, Lighting};
 use crate::effects::{effect_info, PER_KEY};
 use crate::layout::{keys, HEIGHT_U, PLANE, WIDTH_U};
+
+/// Colours of the lights around the keys. An empty list draws that light unlit.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Strips {
+    /// Light bar above the arrow keys, left to right.
+    pub bar: Vec<[u8; 3]>,
+    /// Side lights, top to bottom (both sides alike).
+    pub sides: Vec<[u8; 3]>,
+}
 
 /// Centre of every LED's key, in key units, and the LEDs that have a key.
 fn positions() -> &'static ([(f64, f64); PLANE], Vec<usize>) {

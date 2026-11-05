@@ -21,14 +21,7 @@ const UNLIT_COLOR: [f32; 3] = [0.21, 0.21, 0.23];
 pub type ColorFor = Rc<dyn Fn(usize, f64) -> [u8; 3]>;
 pub type Paint = Rc<dyn Fn(usize, bool)>;
 
-/// Colours of the lights around the keys. An empty list draws that light unlit.
-#[derive(Default)]
-pub struct Strips {
-    /// Light bar above the arrow keys, left to right.
-    pub bar: Vec<[u8; 3]>,
-    /// Side lights, top to bottom (both sides alike).
-    pub sides: Vec<[u8; 3]>,
-}
+pub use crate::preview::Strips;
 
 pub type StripsFor = Rc<dyn Fn(f64) -> Strips>;
 

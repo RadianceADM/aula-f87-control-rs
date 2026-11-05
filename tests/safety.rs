@@ -88,6 +88,9 @@ fn settings_are_protected() {
     std::fs::create_dir_all(&dir).unwrap();
     std::env::set_var("XDG_CONFIG_HOME", &dir);
     std::env::set_var("XDG_RUNTIME_DIR", &dir);
+    // Windows: settings in %APPDATA%, the lock file in %LOCALAPPDATA%.
+    std::env::set_var("APPDATA", &dir);
+    std::env::set_var("LOCALAPPDATA", &dir);
 
     // validators
     assert!(config_ok(&DEFAULT_CONFIG));
