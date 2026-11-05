@@ -21,6 +21,7 @@ pub fn run(args: &[String]) -> Option<i32> {
         "--loopback-test" => loopback_test(seconds(args, i)),
         "--music-test" => music_test(seconds(args, i)),
         "--live-test" => live_test(),
+        "--analysis-test" => analysis_test(seconds(args, i)),
         "--version" => {
             println!("{} {}", aula_f87::about::NAME, env!("CARGO_PKG_VERSION"));
             0
@@ -158,5 +159,40 @@ fn live_test() -> i32 {
     let t = Instant::now();
     std::thread::sleep(Duration::from_millis(5));
     println!("sleep(5ms) took {:.2} ms", t.elapsed().as_secs_f64() * 1000.0);
+    0
+}
+
+/// Music sync on the speaker's sound without the keyboard: 30 frames a second
+/// into a log, then how much the lit area moves (is it following the beat?).
+fn analysis_test(secs: u64) -> i32 {
+    let path = std::env::temp_dir().join("aula-analysis.log");
+    let file = match std::fs::File::create(&path) {
+        Ok(f) => f,
+        Err(e) => {
+            println!("log: FAILED: {e}");
+            return 1;
+        }
+    };
+    let params = MusicParams { style: 1, sensitivity: 0.45, ..MusicParams::default() };
+    let mut sync = match MusicSync::start(Sink::Log(std::io::BufWriter::new(file), 30.0, false), params, None) {
+        Ok(s) => s,
+        Err(e) => {
+            println!("music sync: FAILED: {e}");
+            return 1;
+        }
+    };
+    std::thread::sleep(Duration::from_secs(secs));
+    sync.stop();
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let lit: Vec<i64> = text.lines().filter_map(|l| l.split_whitespace().nth(1)?.parse().ok()).collect();
+    println!("frames {} ({:.1}/s)", lit.len(), lit.len() as f64 / secs as f64);
+    for (n, chunk) in lit.chunks(30).enumerate() {
+        let (mn, mx) = (chunk.iter().min().unwrap_or(&0), chunk.iter().max().unwrap_or(&0));
+        let mean = chunk.iter().sum::<i64>() as f64 / chunk.len().max(1) as f64;
+        let jumps = chunk.windows(2).filter(|w| (w[1] - w[0]).abs() >= 8).count();
+        println!("s{:>2}: lit min {:>2} mean {:>4.1} max {:>2}, frames with a jump of 8+ keys: {}", n, mn, mean, mx, jumps);
+    }
+    println!("first 90 frames: {:?}", &lit[..lit.len().min(90)]);
+    let _ = std::fs::remove_file(&path);
     0
 }

@@ -41,6 +41,7 @@ pub struct UiState {
     pub music_brightness: f64,
     pub follow: Vec<String>,
     pub music_status: String,
+    pub slow_port: bool,
     pub music_frame: Option<SharedFrame>,
     pub tab: String,
     pub window_size: [i32; 2],
@@ -705,7 +706,21 @@ impl MainWindow {
                 ),
             ],
         );
-        StackPanel::new().spacing(16.0).children((preview_box(PreviewSource::Music(s.music_frame.clone()), 360.0), settings)).into()
+        let mut items: Vec<View> = vec![];
+        if s.slow_port {
+            items.push(
+                InfoBar::new()
+                    .is_open(true)
+                    .is_closable(false)
+                    .severity(InfoBarSeverity::Warning)
+                    .title("This USB port is slow for music sync")
+                    .message("The keyboard takes fewer than 20 updates a second here, so the lights lag and sweep from left to right. Plug the keyboard cable into a USB port wired to the processor, usually the blue ones at the back of the PC.")
+                    .into(),
+            );
+        }
+        items.push(preview_box(PreviewSource::Music(s.music_frame.clone()), 360.0));
+        items.push(settings);
+        StackPanel::new().spacing(16.0).children(items).into()
     }
 
     // ------------------------------------------------------------------ about

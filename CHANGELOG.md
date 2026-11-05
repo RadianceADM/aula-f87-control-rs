@@ -13,14 +13,16 @@
     loopback (any player, follows a speaker change, silence when nothing plays).
   - **Talks to the keyboard through the Windows HID API,** with the same safety checks for the
     stored settings. No AULA software or drivers needed.
-  - While music sync is on, the Lighting and Per-key pages say so, with a Stop music sync button,
-    and the paused controls explain why on hover.
   - The window adapts to its width: the menu folds to icons and then to a button, the setting
     cards go to one column, and rows put their control under the label on narrow windows.
   - Starts at login in the tray (turn it off in the tray menu). Settings stay in
     `%APPDATA%\aula-f87-control`, the same files as the Python app.
-- Over the USB cable the keyboard takes about 15 live frames a second on Windows: each 520-byte
-  frame takes 67 ms to send.
+- **Music sync shows its real update rate** ("On · USB cable · 30 updates/s"). On some USB ports
+  (seen on an AMD B450 chipset port) a 520-byte frame takes 67 ms, so the keyboard gets only ~15
+  updates a second and visibly fills from left to right; the Music sync page then says so and
+  asks for a port wired to the processor (usually the blue ones at the back), where it takes 30.
+- While music sync is on, the Lighting and Per-key pages say so, with a Stop music sync button,
+  and the paused controls explain why on hover.
 
 ## v0.5.3 — 2026-10-20
 

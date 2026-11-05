@@ -46,8 +46,9 @@ and the safety checks are the same. It needs Windows 10 1809 or newer, or Window
 - Install with `AULA-F87-Control-<version>-Setup.exe` (per user, no admin rights). Uninstall it
   from Settings → Apps. Settings stay in `%APPDATA%\aula-f87-control`, the same files as the
   Python app.
-- Over the USB cable the keyboard takes about 15 live frames a second on Windows: each 520-byte
-  frame takes 67 ms over the keyboard's USB control channel.
+- **Use a USB port wired to the processor** (usually the blue ones at the back). On some
+  chipset ports a frame takes 67 ms, so the keyboard gets only ~15 updates a second and the
+  lights fill from left to right; the Music sync page shows the rate and warns about this.
 
 [windows/README.md](windows/README.md) explains how it's built.
 

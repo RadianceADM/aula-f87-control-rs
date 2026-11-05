@@ -114,6 +114,9 @@ pub struct App {
     music: Option<MusicSync>,
     music_starting: bool,
     music_cancel: bool, // window closed while music sync was starting
+    /// Live frames the keyboard took per second (measured over ~2 s), while music sync runs.
+    music_fps: Option<f64>,
+    fps_mark: Option<(std::time::Instant, u64)>,
     polls: u64,
     edits: u64, // counts changes made in the window, see follow_keyboard
     battery: Option<Battery>,
@@ -167,6 +170,8 @@ impl Application for App {
             music: None,
             music_starting: false,
             music_cancel: false,
+            music_fps: None,
+            fps_mark: None,
             polls: 0,
             edits: 0,
             battery: None,
@@ -343,7 +348,11 @@ impl App {
         let busy = running || self.music_starting;
         let has_kb = self.kb.is_some();
         let music_status = if running {
-            self.kb.as_ref().map(|k| format!("On · {}", k.label)).unwrap_or_else(|| "On".into())
+            let label = self.kb.as_ref().map(|k| format!("On · {}", k.label)).unwrap_or_else(|| "On".into());
+            match self.music_fps {
+                Some(f) => format!("{label} · {f:.0} updates/s"),
+                None => label,
+            }
         } else if self.music_starting {
             "Starting…".into()
         } else if has_kb {
@@ -374,6 +383,9 @@ impl App {
             music_brightness: self.settings.music_brightness,
             follow: self.settings.music_follow.clone(),
             music_status,
+            // Over the cable the keyboard should take ~30 a second; a slow USB port
+            // (e.g. some chipset ports) gives ~15 and the board visibly sweeps.
+            slow_port: running && self.kb.as_ref().is_some_and(|k| k.wired()) && self.music_fps.is_some_and(|f| f < 20.0),
             music_frame: self.music.as_ref().map(|m| SharedFrame(m.latest.clone())),
             tab: self.tab.clone(),
             window_size: self.window_size,
@@ -495,6 +507,18 @@ impl App {
 
     /// Notice when music sync stops by itself.
     fn watch_music(&mut self, ctx: &ApplicationContext<Self>) {
+        if let Some(sync) = self.music.as_ref() {
+            let now = std::time::Instant::now();
+            let frames = sync.frames.load(Ordering::SeqCst);
+            match self.fps_mark {
+                Some((t, f)) if now.duration_since(t).as_secs_f64() >= 2.0 => {
+                    self.music_fps = Some((frames - f) as f64 / now.duration_since(t).as_secs_f64());
+                    self.fps_mark = Some((now, frames));
+                }
+                None => self.fps_mark = Some((now, frames)),
+                _ => {}
+            }
+        }
         let error = match self.music.as_ref() {
             Some(sync) => sync.error(),
             None => {
@@ -509,6 +533,8 @@ impl App {
 
     fn stop_music(&mut self) {
         bridge::kill_timer(TIMER_MUSIC);
+        self.music_fps = None;
+        self.fps_mark = None;
         if let Some(mut sync) = self.music.take() {
             self.worker.run(move || sync.stop());
         }
