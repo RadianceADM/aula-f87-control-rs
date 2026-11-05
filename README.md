@@ -43,9 +43,11 @@ and the safety checks are the same. It needs Windows 10 1809 or newer, or Window
   player, and follows the speaker when you switch it.
 - **No AULA software or drivers needed.** Close or uninstall AULA's own app: two programs
   driving the lights at once fight each other.
-- Install with `AULA-F87-Control-<version>-Setup.exe` (per user, no admin rights). Uninstall it
-  from Settings → Apps. Settings stay in `%APPDATA%\aula-f87-control`, the same files as the
-  Python app.
+- **Install:** download `AULA-F87-Control-<version>-Setup.exe` from the
+  [latest release](https://github.com/RadianceADM/aula-f87-control-rs/releases/latest) and run it
+  (per user, no admin rights). The installer isn't signed, so Windows may show "Windows protected
+  your PC": choose **More info → Run anyway**. Uninstall it from Settings → Apps. Settings stay in
+  `%APPDATA%\aula-f87-control`, the same files as the Python app.
 - **Use a USB port wired to the processor** (usually the blue ones at the back). On some
   chipset ports a frame takes 67 ms, so the keyboard gets only ~15 updates a second and the
   lights fill from left to right; the Music sync page shows the rate and warns about this.
