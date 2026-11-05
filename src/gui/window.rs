@@ -111,7 +111,6 @@ pub struct Win {
     damaged: Cell<bool>, // the keyboard's stored settings need Repair
     music: RefCell<Option<MusicSync>>,
     music_starting: Cell<bool>,
-    music_cancel: Cell<bool>, // window closed while music sync was starting
     music_colors: RefCell<Frame>,
     music_seen: Cell<u64>,
     follow_updating: Cell<bool>,
@@ -236,7 +235,6 @@ impl Win {
                 damaged: Cell::new(false),
                 music: RefCell::new(None),
                 music_starting: Cell::new(false),
-                music_cancel: Cell::new(false),
                 music_colors: RefCell::new([[0; 3]; PLANE]),
                 music_seen: Cell::new(0),
                 follow_updating: Cell::new(false),
@@ -708,7 +706,6 @@ impl Win {
             return;
         }
         self.music_starting.set(true);
-        self.music_cancel.set(false);
         self.sync_widgets();
         let params = self.music_params();
         let w = Rc::downgrade(self);
@@ -720,7 +717,7 @@ impl Win {
                 win.music_starting.set(false);
                 match result {
                     Ok(mut sync) => {
-                        if sync.running() && !win.music_cancel.get() {
+                        if sync.running() {
                             *win.music.borrow_mut() = Some(sync);
                             win.music_seen.set(0);
                             win.music_settings();
@@ -801,15 +798,11 @@ impl Win {
     }
 
     fn on_close(self: &Rc<Self>) -> glib::Propagation {
-        // Closing the window stops music sync, so the keyboard goes back to its
-        // own lighting within a second. With the top-bar icon showing, the app
-        // stays there (music sync can be started from its menu); "Quit" ends it.
+        // With the top-bar icon showing, closing the window only hides it: the
+        // app stays there and music sync keeps playing on the keyboard. "Quit"
+        // (or Music sync in the menu) stops it. Without the icon, the app quits.
         self.remember_size();
         if self.tray.borrow().as_ref().is_some_and(|t| t.available()) {
-            if self.music.borrow().is_some() {
-                self.stop_music(None); // resumes when the window is opened again
-            }
-            self.music_cancel.set(self.music_starting.get());
             self.window.set_visible(false);
             return glib::Propagation::Stop;
         }
@@ -833,12 +826,11 @@ impl Win {
         self.resume_music();
     }
 
-    /// Music sync was on when the window was last open (or before the keyboard
-    /// dropped out): start it again.
+    /// Music sync was on (when the app last ran, or before the keyboard dropped
+    /// out): start it again, with or without the window (it runs from the top bar).
     fn resume_music(self: &Rc<Self>) {
         if self.settings.borrow().music_on
             && self.kb().is_some()
-            && self.window.is_visible()
             && self.music.borrow().is_none()
             && !self.music_starting.get()
         {

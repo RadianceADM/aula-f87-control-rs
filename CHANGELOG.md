@@ -23,6 +23,9 @@
   asks for a port wired to the processor (usually the blue ones at the back), where it takes 30.
 - While music sync is on, the Lighting and Per-key pages say so, with a Stop music sync button,
   and the paused controls explain why on hover.
+- **Closing the window no longer stops music sync** (Windows and Linux). The app keeps it running
+  from the tray / top-bar icon; turn it off there or with Quit. If it was on, it also starts
+  again at login without opening the window.
 
 ## v0.5.3 — 2026-10-20
 

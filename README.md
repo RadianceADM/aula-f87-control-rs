@@ -37,8 +37,8 @@ and the safety checks are the same. It needs Windows 10 1809 or newer, or Window
 
 - **Pages:** Lighting, Per-key colors, Music sync and About, with Windows 11's own controls on
   Mica. The window adapts to its width.
-- **Tray icon:** the same menu as the Linux top-bar icon. Closing the window keeps the app in the
-  tray; Quit in the menu ends it. It starts at login in the tray (turn that off in the menu).
+- **Tray icon:** the same menu as the Linux top-bar icon. Closing the window keeps the app, and
+  music sync, running in the tray; Quit in the menu ends both. It starts at login in the tray (turn that off in the menu).
 - **Music sync** listens to the default speaker through WASAPI loopback, so it works with any
   player, and follows the speaker when you switch it.
 - **No AULA software or drivers needed.** Close or uninstall AULA's own app: two programs
@@ -153,10 +153,10 @@ takes care of that.
   A copy of the keyboard's last good settings is kept next to it in `cache.json`. **Repair**
   uses it (see [Troubleshooting](#troubleshooting)).
 
-  **Closing the window stops music sync,** and the keyboard goes back to its own lighting
-  within a second. If music sync was on, it starts again when you open the window. It also
-  restarts when the keyboard comes back after being unplugged or asleep. Press **Stop** to
-  keep it off.
+  **Closing the window keeps music sync running** from the top-bar icon. Press **Stop** (or
+  Music sync in the icon's menu) to turn it off, or **Quit** the app. If music sync was on, it
+  starts again when the app starts at login, and when the keyboard comes back after being
+  unplugged or asleep.
 
 To see the version and what changed, open **About** from the main menu (☰) or the top-bar menu.
 
@@ -188,9 +188,8 @@ The keyboard icon in the top bar gives you quick access without opening the wind
 | **Repair keyboard settings** | Only shown when the keyboard's saved settings look damaged |
 | **Quit** | Stops the app, including music sync |
 
-Closing the window stops music sync, so the keyboard shows its own lighting again. The app
-stays in the top bar. To keep music sync running with the window closed, start it from this menu.
-Use **Quit** to stop the app.
+Closing the window keeps the app, and music sync, running in the top bar. Turn music sync off
+from this menu, or use **Quit** to stop the app.
 
 The icon needs a top-bar tray. Ubuntu has one built in (the *Ubuntu AppIndicators*
 extension). On other GNOME systems, install *AppIndicator and KStatusNotifierItem Support*.

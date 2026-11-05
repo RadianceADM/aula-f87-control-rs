@@ -113,7 +113,6 @@ pub struct App {
     damaged: bool,
     music: Option<MusicSync>,
     music_starting: bool,
-    music_cancel: bool, // window closed while music sync was starting
     /// Live frames the keyboard took per second (measured over ~2 s), while music sync runs.
     music_fps: Option<f64>,
     fps_mark: Option<(std::time::Instant, u64)>,
@@ -169,7 +168,6 @@ impl Application for App {
             damaged: false,
             music: None,
             music_starting: false,
-            music_cancel: false,
             music_fps: None,
             fps_mark: None,
             polls: 0,
@@ -396,16 +394,12 @@ impl App {
     // ------------------------------------------------------------------ window
 
     fn window_closed(&mut self) {
-        // Closing the window stops music sync, so the keyboard goes back to its
-        // own lighting within a second; the app stays in the tray (music sync
-        // can be started from its menu). Quit ends it.
+        // Closing the window only closes the window: the app stays in the tray
+        // and music sync keeps playing on the keyboard. Quit (or Music sync in
+        // the tray menu) stops it.
         self.window_open = false;
         let size = [self.window_size[0].max(640), self.window_size[1].max(480)];
         self.set_setting(|s| s.window = size);
-        if self.music.is_some() {
-            self.stop_music(); // resumes when the window is opened again
-        }
-        self.music_cancel = self.music_starting;
     }
 
     fn quit(&mut self, ctx: &ApplicationContext<Self>) {
@@ -475,7 +469,6 @@ impl App {
             return;
         }
         self.music_starting = true;
-        self.music_cancel = false;
         let params = self.music_params();
         // Queued on the worker so it starts after any pending keyboard writes.
         self.worker.submit(
@@ -484,7 +477,7 @@ impl App {
                 app.music_starting = false;
                 match result {
                     Ok(mut sync) => {
-                        if sync.running() && !app.music_cancel {
+                        if sync.running() {
                             app.music = Some(sync);
                             app.music_settings_changed();
                             bridge::set_timer(TIMER_MUSIC, MUSIC_WATCH_MS);
@@ -548,11 +541,10 @@ impl App {
         self.toast(format!("Music sync stopped: {e}"), 6);
     }
 
-    /// Music sync was on when the window was last open (or before the keyboard
-    /// dropped out): start it again.
+    /// Music sync was on (when the app last ran, or before the keyboard dropped
+    /// out): start it again, with or without the window (it runs from the tray).
     fn resume_music(&mut self) {
-        if self.settings.music_on && self.kb.is_some() && self.window_open && self.music.is_none() && !self.music_starting
-        {
+        if self.settings.music_on && self.kb.is_some() && self.music.is_none() && !self.music_starting {
             self.start_music();
         }
     }
